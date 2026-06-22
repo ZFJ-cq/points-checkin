@@ -5,6 +5,7 @@ export interface Task {
   type: 'fixed' | 'temporary';
   createdAt: string;
   deadline?: string; // 可选截止时间，格式 "HH:MM"，超过此时间不可打卡
+  weekdays?: number[]; // 执行星期，0=周日 1=周一 ... 6=周六，空或未定义表示每天
 }
 
 export interface CheckinRecord {

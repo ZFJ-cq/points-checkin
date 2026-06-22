@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, RotateCcw, Shuffle, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, RotateCcw, Shuffle, ChevronUp, ChevronDown, AlertTriangle, CheckCircle, CheckCircle2 } from 'lucide-react';
 import { useStore } from '@/store';
 import Modal from '@/components/Modal';
 
 const randomPoints = () => Math.floor(Math.random() * 20) + 1;
+
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function formatWeekdays(weekdays?: number[]): string {
+  if (!weekdays || weekdays.length === 0) return '';
+  return weekdays.map((d) => `周${WEEKDAY_LABELS[d]}`).join(' ');
+}
 
 export default function Tasks() {
   const tasks = useStore((s) => s.tasks);
@@ -22,9 +29,24 @@ export default function Tasks() {
   const [newPoints, setNewPoints] = useState('');
   const [newType, setNewType] = useState<'fixed' | 'temporary'>('fixed');
   const [newDeadline, setNewDeadline] = useState('');
+  const [newWeekdays, setNewWeekdays] = useState<number[]>([]);
   const [editDeadline, setEditDeadline] = useState('');
   const [editType, setEditType] = useState<'fixed' | 'temporary'>('fixed');
+  const [editWeekdays, setEditWeekdays] = useState<number[]>([]);
   const [sortBy, setSortBy] = useState<'default' | 'points-desc' | 'points-asc' | 'type'>('default');
+
+  // 通用确认弹窗
+  const [actionConfirm, setActionConfirm] = useState<{
+    title: string; message: string; confirmText: string; danger?: boolean; onConfirm: () => void;
+  } | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2200);
+  };
 
   const fixedTasks = tasks.filter((t) => t.type === 'fixed');
   const temporaryTasks = tasks.filter((t) => t.type === 'temporary');
@@ -60,12 +82,12 @@ export default function Tasks() {
     const name = newName.trim();
     const points = parseInt(newPoints, 10);
     if (!name || !newPoints || isNaN(points) || points <= 0) return;
-    addTask({ name, points, type: newType, deadline: newDeadline || undefined });
-    setNewName(''); setNewPoints(''); setNewType('fixed'); setNewDeadline(''); setAddOpen(false);
+    addTask({ name, points, type: newType, deadline: newDeadline || undefined, weekdays: newType === 'fixed' && newWeekdays.length > 0 ? newWeekdays : undefined });
+    setNewName(''); setNewPoints(''); setNewType('fixed'); setNewDeadline(''); setNewWeekdays([]); setAddOpen(false);
   };
 
-  const openEdit = (id: string, name: string, points: number, type: 'fixed' | 'temporary', deadline?: string) => {
-    setEditingId(id); setEditName(name); setEditPoints(String(points)); setEditType(type); setEditDeadline(deadline ?? ''); setEditOpen(true);
+  const openEdit = (id: string, name: string, points: number, type: 'fixed' | 'temporary', deadline?: string, weekdays?: number[]) => {
+    setEditingId(id); setEditName(name); setEditPoints(String(points)); setEditType(type); setEditDeadline(deadline ?? ''); setEditWeekdays(weekdays ?? []); setEditOpen(true);
   };
 
   const handleEdit = () => {
@@ -73,23 +95,52 @@ export default function Tasks() {
     const name = editName.trim();
     const points = parseInt(editPoints, 10);
     if (!name || !editPoints || isNaN(points) || points <= 0) return;
-    updateTask(editingId, { name, points, type: editType, deadline: editDeadline || undefined });
+    updateTask(editingId, { name, points, type: editType, deadline: editDeadline || undefined, weekdays: editType === 'fixed' && editWeekdays.length > 0 ? editWeekdays : undefined });
     setEditOpen(false); setEditingId(null);
   };
 
   const handleDelete = (id: string, name: string) => {
-    if (window.confirm(`确定删除任务"${name}"吗？历史打卡记录和积分将保留。`)) deleteTask(id);
+    setActionConfirm({
+      title: '删除任务',
+      message: `确定删除任务「${name}」吗？历史打卡记录和积分将保留。`,
+      confirmText: '删除',
+      danger: true,
+      onConfirm: () => {
+        deleteTask(id);
+        showToast('已删除', 'info');
+      },
+    });
   };
 
   const handleReuse = (id: string, name: string) => {
     reuseTemporaryTask(id);
-    alert(`已将"${name}"重新添加到今日任务`);
+    showToast(`已将「${name}」重新添加到今日任务`, 'success');
   };
 
   const openAddModal = () => {
     setNewPoints(String(randomPoints()));
     setAddOpen(true);
   };
+
+  const WeekdayPicker = ({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) => (
+    <div className="flex gap-1.5">
+      {[{ label: '日', value: 0 }, { label: '一', value: 1 }, { label: '二', value: 2 }, { label: '三', value: 3 }, { label: '四', value: 4 }, { label: '五', value: 5 }, { label: '六', value: 6 }].map((d) => {
+        const selected = value.includes(d.value);
+        return (
+          <button
+            key={d.value}
+            onClick={() => onChange(selected ? value.filter((w) => w !== d.value) : [...value, d.value].sort())}
+            className="flex-1 py-2 rounded-lg text-xs font-medium transition-all duration-200"
+            style={selected
+              ? { backgroundColor: '#FF8C42', color: '#fff', boxShadow: '0 2px 6px rgba(255,140,66,0.35)' }
+              : { backgroundColor: '#F3F4F6', color: '#9CA3AF' }}
+          >
+            {d.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="min-h-screen pb-8 bg-[#FFF9F2]">
@@ -128,7 +179,7 @@ export default function Tasks() {
           <TaskSection title="全部任务" count={sortedTasks.length} dotColor="#FF8C42" badgeBg="#FFF3E8" badgeColor="#FF8C42" borderGradient="linear-gradient(180deg, #FF8C42, #FFB87A)" editColor="#FF8C42" editHover="hover:bg-orange-50">
             {sortedTasks.map((task, i) => (
               <TaskItem key={task.id} task={task} index={i} dotColor={task.type === 'fixed' ? '#FF8C42' : '#3B82F6'} badgeBg={task.type === 'fixed' ? '#FFF3E8' : '#EFF6FF'} badgeColor={task.type === 'fixed' ? '#FF8C42' : '#3B82F6'} editColor={task.type === 'fixed' ? '#FF8C42' : '#3B82F6'} editHover={task.type === 'fixed' ? 'hover:bg-orange-50' : 'hover:bg-blue-50'}
-                onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline)} onDelete={() => handleDelete(task.id, task.name)}
+                onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline, task.weekdays)} onDelete={() => handleDelete(task.id, task.name)}
                 onMoveUp={() => handleMoveUp(i)} onMoveDown={() => handleMoveDown(i)} showMove canMoveUp={i > 0} canMoveDown={i < sortedTasks.length - 1}
                 onReuse={task.type === 'temporary' ? () => handleReuse(task.id, task.name) : undefined} showReuse={task.type === 'temporary'} />
             ))}
@@ -140,7 +191,7 @@ export default function Tasks() {
             <TaskSection title="固定任务" count={fixedTasks.length} dotColor="#FF8C42" badgeBg="#FFF3E8" badgeColor="#FF8C42" borderGradient="linear-gradient(180deg, #FF8C42, #FFB87A)" editColor="#FF8C42" editHover="hover:bg-orange-50">
               {fixedTasks.map((task, i) => (
                 <TaskItem key={task.id} task={task} index={i} dotColor="#FF8C42" badgeBg="#FFF3E8" badgeColor="#FF8C42" editColor="#FF8C42" editHover="hover:bg-orange-50"
-                  onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline)} onDelete={() => handleDelete(task.id, task.name)}
+                  onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline, task.weekdays)} onDelete={() => handleDelete(task.id, task.name)}
                   onMoveUp={() => handleMoveUp(sortedTasks.indexOf(task))} onMoveDown={() => handleMoveDown(sortedTasks.indexOf(task))} showMove canMoveUp={i > 0} canMoveDown={i < fixedTasks.length - 1} />
               ))}
             </TaskSection>
@@ -150,7 +201,7 @@ export default function Tasks() {
             <TaskSection title="临时任务" count={temporaryTasks.length} dotColor="#3B82F6" badgeBg="#EFF6FF" badgeColor="#3B82F6" borderGradient="linear-gradient(180deg, #3B82F6, #93C5FD)" editColor="#3B82F6" editHover="hover:bg-blue-50">
               {temporaryTasks.map((task, i) => (
                 <TaskItem key={task.id} task={task} index={i} dotColor="#3B82F6" badgeBg="#EFF6FF" badgeColor="#3B82F6" editColor="#3B82F6" editHover="hover:bg-blue-50"
-                  onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline)} onDelete={() => handleDelete(task.id, task.name)}
+                  onEdit={() => openEdit(task.id, task.name, task.points, task.type, task.deadline, task.weekdays)} onDelete={() => handleDelete(task.id, task.name)}
                   onReuse={() => handleReuse(task.id, task.name)} showReuse
                   onMoveUp={() => handleMoveUp(sortedTasks.indexOf(task))} onMoveDown={() => handleMoveDown(sortedTasks.indexOf(task))} showMove canMoveUp={i > 0} canMoveDown={i < temporaryTasks.length - 1} />
               ))}
@@ -167,6 +218,46 @@ export default function Tasks() {
         </div>
       )}
 
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed left-1/2 top-12 z-[60] -translate-x-1/2"
+          style={{ animation: 'toastIn 0.3s ease-out, toastOut 0.3s ease-in 1.9s forwards' }}
+        >
+          <div
+            className="flex items-center gap-2 rounded-2xl px-5 py-3 shadow-lg"
+            style={{ backgroundColor: toast.type === 'success' ? '#10B981' : toast.type === 'error' ? '#EF4444' : '#3B82F6' }}
+          >
+            {toast.type === 'success' && <CheckCircle size={18} className="text-white" />}
+            {toast.type === 'error' && <AlertTriangle size={18} className="text-white" />}
+            {toast.type === 'info' && <CheckCircle2 size={18} className="text-white" />}
+            <span className="text-sm font-medium text-white">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Action Confirm Modal */}
+      <Modal isOpen={!!actionConfirm} onClose={() => setActionConfirm(null)} title={actionConfirm?.title || '确认'}>
+        {actionConfirm && (
+          <div className="pb-6">
+            <div className="mb-5 flex items-center gap-3 rounded-xl bg-white p-4 shadow-sm">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${actionConfirm.danger ? 'bg-red-50' : 'bg-orange-50'}`}>
+                <AlertTriangle size={20} style={{ color: actionConfirm.danger ? '#EF4444' : '#FF8C42' }} />
+              </div>
+              <p className="text-sm" style={{ color: '#374151' }}>{actionConfirm.message}</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setActionConfirm(null)} className="flex-1 rounded-xl py-3 text-sm font-semibold bg-gray-100 active:scale-[0.98] transition-transform" style={{ color: '#6B7280' }}>取消</button>
+              <button onClick={() => { actionConfirm.onConfirm(); setActionConfirm(null); }}
+                className={`flex-1 rounded-xl py-3 text-sm font-semibold text-white shadow-md active:scale-[0.98] transition-transform ${actionConfirm.danger ? 'bg-red-500' : ''}`}
+                style={!actionConfirm.danger ? { background: 'linear-gradient(135deg, #FF8C42, #F59E0B)' } : undefined}>
+                {actionConfirm.confirmText}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Add Modal */}
       <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title="添加任务">
         <div className="pb-6">
@@ -182,11 +273,11 @@ export default function Tasks() {
               </button>
             </div>
           </div>
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">任务类型</label>
             <div className="flex gap-3">
               {(['fixed', 'temporary'] as const).map((t) => (
-                <button key={t} onClick={() => setNewType(t)}
+                <button key={t} onClick={() => { setNewType(t); if (t === 'temporary') setNewWeekdays([]); }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                   style={newType === t
                     ? { color: t === 'fixed' ? '#FF8C42' : '#3B82F6', backgroundColor: t === 'fixed' ? '#FFF3E8' : '#EFF6FF', boxShadow: `0 0 0 2px ${t === 'fixed' ? '#FF8C42' : '#3B82F6'}` }
@@ -199,6 +290,13 @@ export default function Tasks() {
               {newType === 'fixed' ? '固定任务每天自动出现，无需重复创建' : '临时任务仅当日有效，过期后可再次使用'}
             </p>
           </div>
+          {newType === 'fixed' && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">执行星期（可选）</label>
+              <WeekdayPicker value={newWeekdays} onChange={setNewWeekdays} />
+              <p className="mt-1.5 text-xs text-[#9CA3AF]">不选则每天执行，选择后仅在指定星期显示</p>
+            </div>
+          )}
           <div className="mb-6">
             <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">截止时间（可选）</label>
             <input type="time" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)}
@@ -219,7 +317,7 @@ export default function Tasks() {
             <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">任务类型</label>
             <div className="flex gap-3">
               {(['fixed', 'temporary'] as const).map((t) => (
-                <button key={t} onClick={() => setEditType(t)}
+                <button key={t} onClick={() => { setEditType(t); if (t === 'temporary') setEditWeekdays([]); }}
                   className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
                   style={editType === t
                     ? { color: t === 'fixed' ? '#FF8C42' : '#3B82F6', backgroundColor: t === 'fixed' ? '#FFF3E8' : '#EFF6FF', boxShadow: `0 0 0 2px ${t === 'fixed' ? '#FF8C42' : '#3B82F6'}` }
@@ -229,6 +327,13 @@ export default function Tasks() {
               ))}
             </div>
           </div>
+          {editType === 'fixed' && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">执行星期（可选）</label>
+              <WeekdayPicker value={editWeekdays} onChange={setEditWeekdays} />
+              <p className="mt-1.5 text-xs text-[#9CA3AF]">不选则每天执行，选择后仅在指定星期显示</p>
+            </div>
+          )}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">截止时间（可选）</label>
             <input type="time" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)}
@@ -272,12 +377,13 @@ function TaskSection({ title, count, dotColor, badgeBg, badgeColor, borderGradie
 }
 
 function TaskItem({ task, index, dotColor, badgeBg, badgeColor, editColor, editHover, onEdit, onDelete, onReuse, showReuse, onMoveUp, onMoveDown, showMove, canMoveUp, canMoveDown }: {
-  task: { id: string; name: string; points: number; deadline?: string };
+  task: { id: string; name: string; points: number; deadline?: string; weekdays?: number[] };
   index: number; dotColor: string; badgeBg: string; badgeColor: string;
   editColor: string; editHover: string; onEdit: () => void; onDelete: () => void;
   onReuse?: () => void; showReuse?: boolean;
   onMoveUp?: () => void; onMoveDown?: () => void; showMove?: boolean; canMoveUp?: boolean; canMoveDown?: boolean;
 }) {
+  const weekdayStr = formatWeekdays(task.weekdays);
   return (
     <div className="bg-white rounded-2xl shadow-sm flex items-center gap-3 px-4 py-4 animate-slide-up"
       style={{ animationDelay: `${index * 60}ms`, animationFillMode: 'both' }}>
@@ -286,8 +392,13 @@ function TaskItem({ task, index, dotColor, badgeBg, badgeColor, editColor, editH
           <span className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
           <span className="font-semibold truncate text-[#1A1B3A]" style={{ fontSize: 15 }}>{task.name}</span>
         </div>
-        <div className="mt-1.5 ml-4 flex items-center gap-2">
+        <div className="mt-1.5 ml-4 flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: badgeBg, color: badgeColor }}>{task.points}分</span>
+          {weekdayStr && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#FFF3E8] text-[#FF8C42]">
+              {weekdayStr}
+            </span>
+          )}
           {task.deadline && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#F0FDF4] text-[#22C55E]">
               截止 {task.deadline}

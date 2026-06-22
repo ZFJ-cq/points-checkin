@@ -38,6 +38,7 @@ export default function Home() {
   const [newTaskPoints, setNewTaskPoints] = useState('');
   const [newTaskType, setNewTaskType] = useState<'fixed' | 'temporary'>('fixed');
   const [newTaskDeadline, setNewTaskDeadline] = useState('');
+  const [newTaskWeekdays, setNewTaskWeekdays] = useState<number[]>([]);
   const [showPing, setShowPing] = useState(true);
 
   // 通用确认弹窗
@@ -80,7 +81,15 @@ export default function Home() {
 
   const [pointsAnimations, setPointsAnimations] = useState<{ id: string; points: number; x: number; y: number }[]>([]);
 
-  const todayTasks = useMemo(() => tasks.filter((t) => t.type === 'fixed' || t.createdAt === todayStr), [tasks, todayStr]);
+  const todayTasks = useMemo(() => {
+    const dayOfWeek = new Date().getDay(); // 0=周日 1=周一 ... 6=周六
+    return tasks.filter((t) => {
+      if (t.type === 'temporary') return t.createdAt === todayStr;
+      // fixed 任务：如果设置了 weekdays，只在指定星期显示
+      if (t.weekdays && t.weekdays.length > 0) return t.weekdays.includes(dayOfWeek);
+      return true; // 未设置则每天显示
+    });
+  }, [tasks, todayStr]);
   const todayCheckins = useMemo(() => checkins[todayStr] || [], [checkins, todayStr]);
   const completedTaskIds = useMemo(() => new Set(todayCheckins.filter((r) => r.completed).map((r) => r.taskId)), [todayCheckins]);
   const incomplete = useMemo(() => todayTasks.filter((t) => !completedTaskIds.has(t.id)), [todayTasks, completedTaskIds]);
@@ -110,11 +119,12 @@ export default function Home() {
     const name = newTaskName.trim();
     const pts = parseInt(newTaskPoints, 10);
     if (!name || isNaN(pts) || pts <= 0) return;
-    addTask({ name, points: pts, type: newTaskType, deadline: newTaskDeadline || undefined });
+    addTask({ name, points: pts, type: newTaskType, deadline: newTaskDeadline || undefined, weekdays: newTaskType === 'fixed' && newTaskWeekdays.length > 0 ? newTaskWeekdays : undefined });
     setNewTaskName('');
     setNewTaskPoints('');
     setNewTaskType('fixed');
     setNewTaskDeadline('');
+    setNewTaskWeekdays([]);
     setShowAddModal(false);
   };
 
@@ -419,6 +429,33 @@ export default function Home() {
               {newTaskType === 'fixed' ? '固定任务每天自动出现，无需重复创建' : '临时任务仅当日有效，过期后可再次使用'}
             </p>
           </div>
+          {newTaskType === 'fixed' && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">执行星期（可选）</label>
+              <div className="flex gap-1.5">
+                {[{ label: '日', value: 0 }, { label: '一', value: 1 }, { label: '二', value: 2 }, { label: '三', value: 3 }, { label: '四', value: 4 }, { label: '五', value: 5 }, { label: '六', value: 6 }].map((d) => {
+                  const selected = newTaskWeekdays.includes(d.value);
+                  return (
+                    <button
+                      key={d.value}
+                      onClick={() => {
+                        setNewTaskWeekdays((prev) =>
+                          selected ? prev.filter((w) => w !== d.value) : [...prev, d.value].sort()
+                        );
+                      }}
+                      className="flex-1 py-2 rounded-lg text-xs font-medium transition-all duration-200"
+                      style={selected
+                        ? { backgroundColor: '#FF8C42', color: '#fff', boxShadow: '0 2px 6px rgba(255,140,66,0.35)' }
+                        : { backgroundColor: '#F3F4F6', color: '#9CA3AF' }}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs text-[#9CA3AF]">不选则每天执行，选择后仅在指定星期显示</p>
+            </div>
+          )}
           <div className="mb-6">
             <label className="block text-sm font-medium mb-1.5 text-[#1A1B3A]">截止时间（可选）</label>
             <input
@@ -462,7 +499,7 @@ function InputField({ label, value, onChange, placeholder, type = 'text', min }:
 }
 
 function TaskCard({ task, checked, onToggle, onUncheck, delay }: {
-  task: { id: string; name: string; points: number; type: string; deadline?: string };
+  task: { id: string; name: string; points: number; type: string; deadline?: string; weekdays?: number[] };
   checked: boolean; onToggle: (e: React.MouseEvent) => void; onUncheck: () => void; delay: number;
 }) {
   const isFixed = task.type === 'fixed';
@@ -472,6 +509,9 @@ function TaskCard({ task, checked, onToggle, onUncheck, delay }: {
     return now.getHours() > h || (now.getHours() === h && now.getMinutes() > m);
   })() : false;
   const canCheckin = !checked && !isExpired;
+  const weekdayStr = task.weekdays && task.weekdays.length > 0
+    ? task.weekdays.map((d) => `周${['日', '一', '二', '三', '四', '五', '六'][d]}`).join(' ')
+    : '';
 
   return (
     <div
@@ -511,11 +551,16 @@ function TaskCard({ task, checked, onToggle, onUncheck, delay }: {
               {isFixed ? '固定' : '临时'}
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
               style={{ backgroundColor: checked ? '#F3F4F6' : '#FFF3E8', color: checked ? '#9CA3AF' : '#FF8C42' }}>
               +{task.points}分
             </span>
+            {weekdayStr && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-[#FFF3E8] text-[#FF8C42]">
+                {weekdayStr}
+              </span>
+            )}
             {task.deadline && (
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
                 style={{

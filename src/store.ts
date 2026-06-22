@@ -11,7 +11,7 @@ interface AppState {
   config: AppConfig;
 
   addTask: (task: Omit<Task, 'id' | 'createdAt'>) => void;
-  updateTask: (id: string, updates: Partial<Pick<Task, 'name' | 'points' | 'type' | 'deadline'>>) => void;
+  updateTask: (id: string, updates: Partial<Pick<Task, 'name' | 'points' | 'type' | 'deadline' | 'weekdays'>>) => void;
   deleteTask: (id: string) => void;
   reuseTemporaryTask: (id: string) => void;
 
